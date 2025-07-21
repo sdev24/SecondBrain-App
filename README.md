@@ -5,27 +5,94 @@ A full-stack voice note-taking application that allows users to record their voi
 ## Current System Design
 
 ### Frontend (voice_notes_fixed.html)
-The frontend is currently a single HTML file (`voice_notes_fixed.html`) that directly integrates:
+The frontend is a single HTML file (`voice_notes_fixed.html`) that directly integrates:
 -   **HTML**: For structure and content.
--   **CSS**: For basic styling.
+-   **CSS**: For styling, including **mobile optimization** and a **dark mode** theme.
 -   **JavaScript**: For all interactive logic, including:
     -   **Web Speech API**: For real-time voice recording and continuous transcription.
     -   **Editable Transcription Area**: Users can directly edit the transcribed text.
     -   **Save & Discard Buttons**: Functionality to save the current note or clear the transcription.
-    -   **Backend Interaction**: Direct `fetch` API calls to the Node.js backend for saving notes and performing RAG queries.
+    -   **Inline Tag Editing**: Users can directly edit tags on saved notes.
+    -   **Backend Interaction**: Direct `fetch` API calls to the Node.js backend for saving notes, performing RAG queries, and updating notes.
 
 ### Backend (apps/api)
 -   **Node.js with Express.js and TypeScript**: Handles API requests.
--   **Weaviate (Vector Database)**: Stores notes.
--   **Gemini API**: Used for generating summaries and tags for notes.
+-   **Weaviate (Vector Database)**: Stores notes and their vector embeddings.
+-   **Google Gemini API**: Used for generating summaries and initial tags for notes.
+-   **OpenAI API**: Used by Weaviate for generating vector embeddings for notes (via the `text2vec-openai` module).
 
 ## Tech Stack
 
 -   **Frontend**: HTML, CSS, JavaScript (directly in `voice_notes_fixed.html`)
 -   **Backend**: Node.js with Express.js and TypeScript
 -   **Database**: Weaviate (Vector Database)
--   **AI/LLM**: Google Gemini API
+-   **AI/LLM**:
+    -   Google Gemini API (for summarization and initial tag generation)
+    -   OpenAI API (for vector embeddings via Weaviate)
 -   **Package Manager**: pnpm (Monorepo with workspaces)
+
+    -   OpenAI API (for vector embeddings via Weaviate)
+-   **Package Manager**: pnpm (Monorepo with workspaces)
+
+## Architecture Diagram
+
+```mermaid
+graph TD
+    subgraph User Interface
+        A[Browser: voice_notes_fixed.html]
+    end
+
+    subgraph Backend (Node.js / Express)
+        B[API Server]
+        C[Weaviate Client]
+    end
+
+    subgraph External Services
+        D[Weaviate Cloud DB]
+        E[Google Gemini API]
+        F[OpenAI Embedding API]
+    end
+
+    A -- HTTP Requests --> B
+    B -- Save/Retrieve Notes --> C
+    C -- Data & Vectorization --> D
+    B -- Summarize/Tag --> E
+    C -- Get Embeddings (for Weaviate) --> F
+
+    style A fill:#f9f,stroke:#333,stroke-width:2px
+    style B fill:#bbf,stroke:#333,stroke-width:2px
+    style C fill:#bbf,stroke:#333,stroke-width:2px
+    style D fill:#ccf,stroke:#333,stroke-width:2px
+    style E fill:#cfc,stroke:#333,stroke-width:2px
+    style F fill:#fcc,stroke:#333,stroke-width:2px
+```
+
+## Interaction Diagram (Saving a Note)
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant Browser
+    participant BackendAPI
+    participant GeminiAPI
+    participant WeaviateDB
+    participant OpenAIAPI
+
+    User->>Browser: Records voice note
+    Browser->>BackendAPI: POST /api/notes (transcript)
+
+    BackendAPI->>GeminiAPI: Request Summary & Tags
+    GeminiAPI-->>BackendAPI: Summary & Tags (raw)
+
+    BackendAPI->>WeaviateDB: Save Note (transcript, summary, raw tags)
+    Note over WeaviateDB: Weaviate uses its configured OpenAI module to get embeddings for the note content.
+    WeaviateDB->>OpenAIAPI: Request Embeddings (for note content)
+    OpenAIAPI-->>WeaviateDB: Embeddings
+    WeaviateDB-->>BackendAPI: Confirmation (Note saved)
+
+    BackendAPI-->>Browser: New Note Data
+    Browser->>User: Displays new note
+```
 
 ## Project Structure
 
