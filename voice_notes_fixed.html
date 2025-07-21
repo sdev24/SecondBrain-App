@@ -511,7 +511,7 @@
                 
                 relevantNotes.forEach(note => {
                     response += `📝 <strong>Summary:</strong> ${note.summary}<br>`;
-                    response += `<em>Transcript: ${note.transcript.substring(0, 100)}...</em><br>`;
+                    response += `<em>Transcript: ${note.transcript ? note.transcript.substring(0, 100) : ''}...</em><br>`;
                     response += `<em>(Relevance: ${Math.round((1 - note.score) * 100)}%)</em><br><br>`;
                 });
 
@@ -535,7 +535,7 @@
                     return `
                         <div class="note-card">
                             <div class="note-header">
-                                <div class="note-tags">
+                                <div class="note-tags" contenteditable="true" data-note-id="${note.id}" data-field="tags">
                                     ${tags.map(tag => `<span class="note-category">${tag}</span>`).join(' ')}
                                 </div>
                                 <span class="note-time">${new Date(note.createdAt).toLocaleString()}</span>
@@ -545,6 +545,52 @@
                         </div>
                     `;
                 }).join('');
+
+                // Add event listeners for inline editing
+                grid.querySelectorAll('.note-tags[contenteditable="true"]').forEach(tagDiv => {
+                    tagDiv.addEventListener('blur', (event) => this.handleTagEdit(event));
+                    tagDiv.addEventListener('keypress', (event) => {
+                        if (event.key === 'Enter') {
+                            event.preventDefault(); // Prevent new line
+                            event.target.blur(); // Trigger blur to save
+                        }
+                    });
+                });
+            }
+
+            async handleTagEdit(event) {
+                const target = event.target;
+                const noteId = target.dataset.noteId;
+                const field = target.dataset.field;
+                const newValue = target.textContent.trim();
+
+                // Find the original note to compare and update
+                const originalNote = this.notes.find(note => note.id === noteId);
+                if (!originalNote || originalNote[field] === newValue) {
+                    return; // No change or note not found
+                }
+
+                try {
+                    const response = await fetch(`/api/notes/${noteId}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ [field]: newValue })
+                    });
+
+                    if (!response.ok) {
+                        throw new Error(`Server error: ${response.statusText}`);
+                    }
+
+                    // Update the local state
+                    originalNote[field] = newValue;
+                    console.log(`Note ${noteId} ${field} updated to: ${newValue}`);
+
+                } catch (error) {
+                    console.error(`Error updating note ${noteId} ${field}:`, error);
+                    alert(`Failed to update ${field}. Check console for details.`);
+                    // Revert UI to original value if update fails
+                    target.textContent = originalNote[field];
+                }
             }
         }
         

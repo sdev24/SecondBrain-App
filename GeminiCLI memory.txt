@@ -1,0 +1,118 @@
+## Gemini CLI Session Memory
+
+This document summarizes the key discussions, decisions, and code changes made during the interaction with the Gemini CLI agent.
+
+**Session Start Date:** Sunday, 20 July 2025
+
+---
+
+### 1. Initial Problem: Weaviate Vectorization API Key Issue
+
+*   **Problem:** Weaviate Cloud instance (pgfor141rwoihok7b0lng.c0.europe-west3.gcp.weaviate.cloud) was failing to vectorize data, reporting "no api key found" for Google/PaLM.
+*   **Initial Diagnosis:** Believed the Google API key needed to be configured directly in Weaviate Cloud Console.
+*   **User Clarification:** User provided documentation stating the key should be passed via HTTP headers at runtime.
+    *   `X-Goog-Vertex-Api-Key` for Vertex AI keys.
+    *   `X-Goog-Studio-Api-Key` for AI Studio keys.
+*   **Action:** Modified `apps/api/src/weaviateClient.ts` to:
+    *   Add `GEMINI_API_KEY` check.
+    *   Pass `GEMINI_API_KEY` via `X-Goog-Vertex-Api-Key` header.
+*   **Result:** Still failed with "invalid authentication credentials".
+*   **User Clarification:** Key was from Google AI Studio.
+*   **Action:** Modified `apps/api/src/weaviateClient.ts` to use `X-Goog-Studio-Api-Key` header.
+*   **Result:** Still failed with "no api key found" (indicating Weaviate module issue) or "invalid authentication credentials" (indicating key permissions).
+
+---
+
+### 2. Transition to OpenAI Embeddings
+
+*   **Decision:** User opted to switch to OpenAI for embeddings due to persistent Gemini key issues.
+*   **Action:**
+    *   Modified `apps/api/src/weaviateClient.ts`:
+        *   Changed `GEMINI_API_KEY` to `OPENAI_API_KEY`.
+        *   Changed header to `X-OpenAI-Api-Key`.
+        *   Updated error messages.
+    *   Modified `apps/api/src/routes/notes.ts`:
+        *   Removed `getSummaryAndTags` function (Gemini-specific).
+        *   Simplified note saving to use hardcoded summary/tags.
+    *   **User Action Required:** Update `apps/api/.env` with `OPENAI_API_KEY`.
+*   **Schema Recreation:** User deleted "Note" class in Weaviate Cloud.
+*   **Action:** Modified `apps/api/src/weaviateClient.ts` to define "Note" class with `text2vec-openai` vectorizer and `text-embedding-ada-002` model.
+*   **Result:** Error: "wrong OpenAI model name, available model names are: [ada babbage curie davinci text-embedding-3-small text-embedding-3-large]".
+*   **Action:** Modified `apps/api/src/weaviateClient.ts` to use `ada` model name.
+*   **Result:** Error: "invalid text property 'tags' on class 'Note': not a string, but []interface {}".
+*   **Action:** Modified `apps/api/src/routes/notes.ts` to `tags: tags.join(', ')` before saving to Weaviate.
+*   **Result:** Error: "ReferenceError: tags is not defined".
+*   **Action:** Modified `apps/api/src/routes/notes.ts` to define `tags: string[] = [];` before use.
+*   **Result:** Error: "You exceeded your current quota, please check your plan and billing details." (OpenAI API quota).
+*   **User Action:** User topped up credits.
+*   **Result:** Notes saved, but summary and tags were hardcoded/empty.
+
+---
+
+### 3. Re-introducing Gemini for Summarization and Tags
+
+*   **Decision:** Use Gemini for generative tasks (summary/tags) and OpenAI for embeddings.
+*   **Action:** Modified `apps/api/src/routes/notes.ts` to re-introduce `getSummaryAndTags` function and integrate it into the `POST /api/notes` route.
+*   **User Action Required:** Add `GEMINI_API_KEY` back to `apps/api/.env`.
+*   **Result:** Backend no errors, but frontend `TypeError: tags.map is not a function`.
+*   **Action:** Modified `voice_notes_fixed.html` to:
+    *   Split `note.tags` string into an array for `renderNotes`.
+    *   Split `note.tags` string into an array for `generateRAGResponse`.
+*   **Result:** Summaries and tags working correctly in frontend.
+
+---
+
+### 4. Tag Normalization Brainstorm & Implementation Attempt
+
+*   **Brainstorm:**
+    *   Tag Normalization/Deduplication (using embeddings to find similar existing tags).
+    *   Prompt Engineering for Gemini.
+    *   User-Defined Tag Management.
+    *   Hierarchical Tags.
+    *   Tag Cloud/Analytics.
+*   **Decision:** User wanted to implement Tag Normalization (Option 1).
+*   **Action:**
+    *   Modified `apps/api/src/weaviateClient.ts` to add `isNormalized: boolean` to `Note` schema.
+    *   Modified `apps/api/src/routes/notes.ts` to:
+        *   Remove immediate `normalizeTags` call from `POST /api/notes`.
+        *   Add `isNormalized: false` to `noteData`.
+        *   Add `getOpenAIEmbedding` and `normalizeTags` functions.
+        *   Add `POST /api/notes/normalize-tags` endpoint.
+    *   Modified `voice_notes_fixed.html` to:
+        *   Add "Optimize Tags" button.
+        *   Add `normalizeTagsManually` function to call new backend endpoint.
+        *   Update `renderNotes` to show `(Normalized)` / `(Raw)` status.
+*   **Result:** Delay in saving (expected), then `summary` and `transcript` became `Null` or `01/01/1970` after normalization. This indicated a schema mismatch or data corruption after updates.
+
+---
+
+### 5. Rollback of Tag Normalization
+
+*   **Decision:** User requested full rollback of tag normalization to address data issues and prioritize inline editing.
+*   **Action:**
+    *   Reverted `apps/api/src/routes/notes.ts` to remove normalization logic and endpoint.
+    *   Reverted `apps/api/src/weaviateClient.ts` to remove `isNormalized` and change model back to `text-embedding-ada-002`.
+    *   Reverted `voice_notes_fixed.html` to remove "Optimize Tags" button and related display logic.
+    *   **User Action Required:** Delete "Note" class from Weaviate Cloud Console and restart backend.
+
+---
+
+### 6. Git Operations
+
+*   **Action:** Initialized Git repository in `C:/Users/Dev/desktop/sb/`.
+*   **Action:** Modified `.gitignore` to exclude `apps/web/`.
+*   **Action:** Added all files to staging.
+*   **Action:** Committed changes with message "Initial".
+*   **Action:** Added remote origin `https://github.com/sdev24/SecondBrain-App.git`.
+*   **Action:** Pushed to `master` branch.
+
+---
+
+**Current State:**
+The application should be back to a state where:
+*   Notes are saved with Gemini-generated summaries and tags.
+*   OpenAI is used for Weaviate embeddings.
+*   Tag normalization is completely removed.
+*   The frontend displays summaries and tags correctly.
+
+**Next Task:** Implement inline editing of tags.

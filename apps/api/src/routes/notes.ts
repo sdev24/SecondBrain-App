@@ -57,6 +57,8 @@ router.post('/', async (req: Request, res: Response) => {
   };
 
 
+
+
   try {
     const result = await client.data
       .creator()
@@ -128,6 +130,32 @@ router.get('/search', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Error searching notes:', JSON.stringify(error, null, 2));
     res.status(500).json({ error: 'Failed to search notes', details: error.message });
+  }
+});
+
+// PUT /api/notes/:id - Update a note
+router.put('/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { tags } = req.body; // Expecting tags as a comma-separated string
+
+  if (typeof tags !== 'string') {
+    return res.status(400).json({ error: 'Tags must be a string' });
+  }
+
+  try {
+    await client.data
+      .updater()
+      .withId(id)
+      .withClassName('Note')
+      .withProperties({
+        tags: tags,
+      })
+      .do();
+
+    res.status(200).json({ message: 'Note updated successfully' });
+  } catch (error: any) {
+    console.error('Error updating note:', error);
+    res.status(500).json({ error: 'Failed to update note', details: error.message });
   }
 });
 
