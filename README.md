@@ -38,16 +38,16 @@ The frontend is a single HTML file (`voice_notes_fixed.html`) that directly inte
 
 ```mermaid
 graph TD
-    subgraph User Interface
+    subgraph UI
         A[Browser: voice_notes_fixed.html]
     end
 
-    subgraph Backend (Node.js / Express)
+    subgraph Backend
         B[API Server]
         C[Weaviate Client]
     end
 
-    subgraph External Services
+    subgraph External
         D[Weaviate Cloud DB]
         E[Google Gemini API]
         F[OpenAI Embedding API]
